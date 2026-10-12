@@ -1,0 +1,11 @@
+# Terraform: локальное состояние и провайдеры не коммитим
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# kubeconfig содержит клиентские сертификаты кластера
+kubeconfig.yaml
+
+.DS_Store
+__pycache__/

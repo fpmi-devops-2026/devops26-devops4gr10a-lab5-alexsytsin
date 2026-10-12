@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: liquibase-migrate
+  namespace: beauty-salon
+  labels:
+    app: liquibase
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: liquibase
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-postgres
+          image: niispo-lab1-postgres:local
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -U salon; do sleep 2; done
+      containers:
+        - name: liquibase
+          image: niispo-lab1-liquibase:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: salon-db
+          # args (а не command): сохраняем ENTRYPOINT образа liquibase,
+          # как это делает docker-compose command:
+          args:
+            - --url=jdbc:postgresql://postgres:5432/salon
+            - --username=$(POSTGRES_USER)
+            - --password=$(POSTGRES_PASSWORD)
+            - --changelog-file=changelog/db.changelog-master.yaml
+            - update
