@@ -1,0 +1,35 @@
+---
+- name: Подготовка нод кластера
+  hosts: k8s_nodes
+  gather_facts: true
+
+  tasks:
+    - name: Обновить кеш пакетов apt
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Установить утилиты на все ноды
+      ansible.builtin.apt:
+        name:
+          - curl
+          - htop
+          - jq
+        state: present
+
+    - name: Создать файл-метку на каждой ноде
+      ansible.builtin.copy:
+        dest: /etc/lab5-marker
+        content: |
+          lab=5
+          node={{ inventory_hostname }}
+        mode: "0644"
+
+    - name: Показать метку
+      ansible.builtin.command: cat /etc/lab5-marker
+      register: marker
+      changed_when: false
+
+    - name: Вывод метки
+      ansible.builtin.debug:
+        var: marker.stdout_lines

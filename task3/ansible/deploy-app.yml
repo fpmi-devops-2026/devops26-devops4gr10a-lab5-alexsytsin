@@ -1,0 +1,80 @@
+---
+- name: Загрузить образы приложения в ноды kind
+  hosts: localhost
+  gather_facts: false
+  vars:
+    cluster_name: lab5
+    app_images:
+      - niispo-lab1-postgres:local
+      - niispo-lab1-redis:local
+      - niispo-lab1-liquibase:local
+      - niispo-lab1-api:local
+      - niispo-lab1-nginx:local
+
+  tasks:
+    - name: kind load docker-image для каждого образа
+      ansible.builtin.command:
+        cmd: "{{ lookup('env', 'HOME') }}/bin/kind load docker-image {{ item }} --name {{ cluster_name }}"
+      loop: "{{ app_images }}"
+
+- name: Деплой приложения в кластер
+  hosts: localhost
+  gather_facts: false
+  vars:
+    kubeconfig: "{{ playbook_dir }}/../kubeconfig.yaml"
+    manifests_dir: "{{ playbook_dir }}/../manifests"
+    manifests:
+      - 00-namespace.yaml
+      - 01-secret.yaml
+      - 02-postgres.yaml
+      - 03-redis.yaml
+      - 04-liquibase-job.yaml
+      - 05-api.yaml
+      - 06-nginx.yaml
+
+  tasks:
+    - name: Применить манифесты
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        src: "{{ manifests_dir }}/{{ item }}"
+        state: present
+      loop: "{{ manifests }}"
+
+    - name: Ждать завершения миграций liquibase
+      ansible.builtin.command:
+        cmd: kubectl wait --for=condition=complete job/liquibase-migrate -n beauty-salon --timeout=240s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+
+    - name: Ждать rollout всех deployment
+      ansible.builtin.command:
+        cmd: "kubectl rollout status deployment/{{ item }} -n beauty-salon --timeout=240s"
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      loop:
+        - postgres
+        - redis
+        - api
+        - nginx
+
+    - name: Показать поды и их ноды
+      ansible.builtin.command:
+        cmd: kubectl get pods -n beauty-salon -o wide
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: pods
+      changed_when: false
+
+    - name: Раскладка подов по нодам
+      ansible.builtin.debug:
+        var: pods.stdout_lines
+
+    - name: Проверить ответ приложения через NodePort
+      ansible.builtin.uri:
+        url: http://127.0.0.1:30080/health
+        status_code: 200
+      register: health
+
+    - name: Ответ /health
+      ansible.builtin.debug:
+        var: health.json

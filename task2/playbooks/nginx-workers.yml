@@ -1,0 +1,48 @@
+---
+- name: Установка и управление nginx на worker-нодах
+  hosts: workers
+  gather_facts: false
+
+  tasks:
+    - name: Установить nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+
+    - name: Положить свою стартовую страницу
+      ansible.builtin.copy:
+        dest: /var/www/html/index.html
+        content: |
+          <h1>Lab5 - {{ inventory_hostname }}</h1>
+          <p>Страница развёрнута Ansible на worker-ноде kind-кластера.</p>
+        mode: "0644"
+      notify: Restart nginx
+
+    - name: Запустить и включить nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Проверить ответ nginx локально на ноде
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        return_content: true
+      register: page
+      failed_when: "'Lab5' not in page.content"
+
+    - name: Показать статус службы
+      ansible.builtin.command: systemctl is-active nginx
+      register: nginx_state
+      changed_when: false
+
+    - name: Состояние nginx
+      ansible.builtin.debug:
+        msg: "nginx на {{ inventory_hostname }}: {{ nginx_state.stdout }}"
+
+  handlers:
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
